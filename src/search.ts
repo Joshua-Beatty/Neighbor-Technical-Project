@@ -1,3 +1,4 @@
+import combinations from "combinations";
 import { MultiVehicleSearchSchema as searchScheama } from "./app";
 import { locations, sortedLocations, location } from "./data/locations";
 import stringify from "json-stable-stringify";
@@ -10,11 +11,13 @@ function searchLocations(data: searchScheama) {
     //Calculate total area for simple cut off
     const totalArea = calculateTotalArea(data);
     const searchResponse: locationOuput[] = [];
+    console.log(`Data area: ${totalArea}`)
 
     for (const [location_id, location] of sortedLocations) {
         //sortedLocations is sorted in descending order so break if the area
         // of the cars is larger then the area of the rest of the locations
         if (location.totalArea < totalArea) break;
+        console.log(`Trying locations_id ${location_id}, area: ${location.totalArea}`)
 
         //Otherwise test it, if it was a success add the output to the response
         const output = testLocation(data, location);
@@ -66,41 +69,60 @@ function testLocation(
     }
     cars.sort((a, b) => b - a);
 
-    //Test if we can pack the cars into the given listings using the helper
-    const test = packLanes(cars, listings, [], []);
-    //Price of Infinity means it is not possible to pack them
-    if (test.price !== Infinity) {
+    const listingCombinations = combinations(listings.map((x) => x.id));
+    
+    let cheapest = Infinity;
+    let cheapestIds: string[] = [];
+    let cheapestIndex: number[] = [];
+    
+    for (const purchased of listingCombinations) {
+        const purchasedIndex = purchased.map((a) =>
+            listings.findIndex((b) => b.id == a)
+        );
+        let total = 0;
+        for (const listing of purchased) {
+            total += location.listings[listing].price_in_cents;
+        }
+        if (total >= cheapest) continue;
+
+        const test = packLanes(cars, listings, purchasedIndex, {});
+        if (test) {
+            cheapest = total;
+            cheapestIds = purchased;
+            cheapestIndex = purchasedIndex;
+            currentSize = purchased.length
+        }
+    }
+    if (cheapest == Infinity) {
+        return { success: false };
+    } else {
+        
         return {
             success: true,
             output: {
                 location_id: location.id,
-                listing_ids: test.purchasedIds,
-                total_price_in_cents: test.price,
+                listing_ids: cheapestIds,
+                total_price_in_cents: cheapest,
             },
         };
     }
-
-    return { success: false };
 }
 
 function packLanes(
     cars: number[],
     listings_orig: { lanes: number[]; price: number; id: string }[],
     purchased: number[],
-    purchasedIds: string[]
+    memo: any
 ) {
-    //If there are no cars left in the lenth, packing is successful
-    // return that there is no additional cost
-    if (cars.length === 0) return { price: 0, purchased, purchasedIds };
+    if (cars.length === 0) {
+        return true
+    };
+    const hash = stringify({ cars, listings_orig });
+    if (!hash) throw "failed to hash";
+    if (typeof memo[hash] == "boolean") return memo[hash];
 
     //Grab the first car to pack
     const car = cars[0];
-
-    //Load inital conditions
-    let lowestPrice = Infinity;
-    //These arrays will be overwritten if there is a successful packing
-    let lowestPricePurchased: number[] = [];
-    let lowestPricePurchasedIds: string[] = [];
 
     //First attempt to put the current car into any lane of a currently purchased listing
     for (const index of purchased) {
@@ -122,71 +144,17 @@ function packLanes(
         if (carParked) {
             //Test packing the remaining cars
             // Listings has already been updated to note that there is a car in one of the lanes
-            let price = packLanes(
-                cars.slice(1),
-                listings,
-                purchased,
-                purchasedIds
-            );
-            // If the price is less then the current price go aheaad and save 
-            // That this packing is the most optimal so far
-            if (price.price < lowestPrice) {
-                lowestPrice = price.price;
-                lowestPricePurchased = price.purchased;
-                lowestPricePurchasedIds = price.purchasedIds;
+            let test = packLanes(cars.slice(1), listings, purchased, memo);
+            if (test) {
+                // console.log(listings)
+                memo[hash] = true;
+                return true;
             }
         }
     }
-    //If lowest price is 0, that means all of the above cars were
-    // able to fit without purchasing any additional listing, so no need to test further
-    if (lowestPrice === 0) {
-        return {
-            price: lowestPrice,
-            purchased: lowestPricePurchased,
-            purchasedIds: lowestPricePurchasedIds,
-        };
-    }
-
-    //If we were not able to park the car into any of the already purchased listings
-    // Or if the cheapest of the packing attempts above cost money, we should attempt 
-    // to pack this car into a newly purchased listing
-    for (const index in listings_orig) {
-        const listings = structuredClone(listings_orig);
-        const listing = listings[index];
-
-        //Make sure this car fits into this listing before purchasing it
-        if (listing.lanes[0] < car) continue;
-
-        //Note price, and put car into the first lane
-        listing.lanes[0] -= car;
-        const price = listing.price;
-
-        //Creating new "purchased" arrays
-        const purchased_new = structuredClone(purchased);
-        purchased_new.push(Number(index));
-        const purchasedIds_new = structuredClone(purchasedIds);
-        purchasedIds_new.push(listing.id);
-        let newPrice = packLanes(
-            cars.slice(1),
-            listings,
-            purchased_new,
-            purchasedIds_new
-        );
-
-        const totalPrice = newPrice.price + price;
-        //If the price is cheaper then anything we have seen so far return it
-        if (totalPrice < lowestPrice) {
-            lowestPrice = totalPrice;
-            lowestPricePurchased = newPrice.purchased;
-            lowestPricePurchasedIds = newPrice.purchasedIds;
-        }
-    }
-
-    return {
-        price: lowestPrice,
-        purchased: lowestPricePurchased,
-        purchasedIds: lowestPricePurchasedIds,
-    };
+    // If we get to this sport, the cars can not be packed
+    memo[hash] = false;
+    return false;
 }
 
 export default searchLocations;
