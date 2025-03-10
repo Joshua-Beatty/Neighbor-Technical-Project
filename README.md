@@ -32,6 +32,6 @@ See [INSTRUCTIONS](./INSTRUCTIONS.md) for details of API docs.
 
 ## Assumptions
 
--   Cars do not neeed any margin around them to fit into a location, eg 4 cars of length 10, can fit into a listing with a size of 20x20
+-   Cars do not need any margin around them to fit into a location, eg 4 cars of length 10, can fit into a listing with a size of 20x20
 -   Car length and quantity must be positive
 -   Cars can not rotate, eg the length of the car must be aligned with the length of the listing
