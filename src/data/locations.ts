@@ -27,9 +27,6 @@ for (const listing of listings) {
 
 const sortedLocations = Object.entries(locations);
 sortedLocations.sort((a, b) => b[1].totalArea - a[1].totalArea);
-console.log(sortedLocations[0])
-console.log(sortedLocations[1])
-console.log(sortedLocations[2])
 
 export { locations, sortedLocations };
 export type { location };

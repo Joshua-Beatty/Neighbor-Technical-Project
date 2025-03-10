@@ -5,7 +5,6 @@ import searchLocations from "./search";
 const app = express();
 app.use(express.json());
 
-
 //Schema validation for incoming request
 const VehicalSchema = z.object({
     length: z.number().positive(),
@@ -13,7 +12,6 @@ const VehicalSchema = z.object({
 });
 const MultiVehicleSearchSchema = z.array(VehicalSchema).min(1).max(5);
 type MultiVehicleSearchSchema = z.infer<typeof MultiVehicleSearchSchema>;
-
 
 //Just validate the incoming data and pass to search handler
 app.post("/", (req, res) => {

@@ -1,6 +1,7 @@
 import combinations from "combinations";
 import { MultiVehicleSearchSchema as searchScheama } from "./app";
 import { locations, sortedLocations, location } from "./data/locations";
+import { v4 as uuidv4 } from 'uuid';
 import stringify from "json-stable-stringify";
 type locationOuput = {
     location_id: string;
@@ -11,13 +12,15 @@ function searchLocations(data: searchScheama) {
     //Calculate total area for simple cut off
     const totalArea = calculateTotalArea(data);
     const searchResponse: locationOuput[] = [];
-    console.log(`Data area: ${totalArea}`)
+    const id = uuidv4()
+    console.log(`New request "${id}" Total area: ${totalArea}, data: ${JSON.stringify(data)}`);
+
+    console.time(id)
 
     for (const [location_id, location] of sortedLocations) {
         //sortedLocations is sorted in descending order so break if the area
         // of the cars is larger then the area of the rest of the locations
         if (location.totalArea < totalArea) break;
-        console.log(`Trying locations_id ${location_id}, area: ${location.totalArea}`)
 
         //Otherwise test it, if it was a success add the output to the response
         const output = testLocation(data, location);
@@ -29,6 +32,7 @@ function searchLocations(data: searchScheama) {
         (a, b) => a.total_price_in_cents - b.total_price_in_cents
     );
 
+    console.timeEnd(id)
     return searchResponse;
 }
 //Calculate total area of cars
@@ -70,12 +74,13 @@ function testLocation(
     cars.sort((a, b) => b - a);
 
     const listingCombinations = combinations(listings.map((x) => x.id));
-    
+
     let cheapest = Infinity;
     let cheapestIds: string[] = [];
     let cheapestIndex: number[] = [];
-    
+    //Get each combination of listings for the location
     for (const purchased of listingCombinations) {
+        //Calculate the total price of this combination
         const purchasedIndex = purchased.map((a) =>
             listings.findIndex((b) => b.id == a)
         );
@@ -83,20 +88,22 @@ function testLocation(
         for (const listing of purchased) {
             total += location.listings[listing].price_in_cents;
         }
+        //If the price is more expesnive then the cheapest found option, ignore this combination
         if (total >= cheapest) continue;
 
+        //If the price is cheaper, test to see if this combination fits the cars
+        // If it does save it
         const test = packLanes(cars, listings, purchasedIndex, {});
         if (test) {
             cheapest = total;
             cheapestIds = purchased;
             cheapestIndex = purchasedIndex;
-            currentSize = purchased.length
         }
     }
+    //Infinity means no solution was found for this location
     if (cheapest == Infinity) {
         return { success: false };
     } else {
-        
         return {
             success: true,
             output: {
@@ -114,17 +121,22 @@ function packLanes(
     purchased: number[],
     memo: any
 ) {
+    //Base case, no cars left to pack success
     if (cars.length === 0) {
-        return true
-    };
+        return true;
+    }
+
+    //Check memo and return if found
     const hash = stringify({ cars, listings_orig });
     if (!hash) throw "failed to hash";
     if (typeof memo[hash] == "boolean") return memo[hash];
 
+    //If no memo match, actually calcualte
+
     //Grab the first car to pack
     const car = cars[0];
 
-    //First attempt to put the current car into any lane of a currently purchased listing
+    //First attempt to put the current car into any lane a purchased listing
     for (const index of purchased) {
         const listings = structuredClone(listings_orig);
         const listing = listings[index];
@@ -146,7 +158,7 @@ function packLanes(
             // Listings has already been updated to note that there is a car in one of the lanes
             let test = packLanes(cars.slice(1), listings, purchased, memo);
             if (test) {
-                // console.log(listings)
+                //Update memo if passed and return that we can from this state
                 memo[hash] = true;
                 return true;
             }
